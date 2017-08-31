@@ -1,0 +1,24 @@
+{
+  "name": "treescape",
+  "version": "0.0.1",
+  "description": "An temaplating engine for express js that has client-side tools",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/andrewusmedia/treescape.git"
+  },
+  "keywords": [
+    "express",
+    "view",
+    "engine"
+  ],
+  "author": "Andrew L Trefethen",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/andrewusmedia/treescape/issues"
+  },
+  "homepage": "https://github.com/andrewusmedia/treescape#readme"
+}
