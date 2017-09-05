@@ -1,7 +1,20 @@
 const fs = require('fs');
-const builtins  = require('./lib/builtins');
+const mixins  = require('./lib/builtins');
 
 const viewCache = {};
+
+function PRead(filepath){
+  return new Promise((res,rej)=>{
+    fs.readFile(filepath,'utf8',(err,contents)=>{
+      if(err){
+        rej(err);
+      }
+      else{
+        res(contents);
+      }
+    });
+  });
+}
 
 function tokenize(contents){
   let tokens = [];
@@ -16,7 +29,7 @@ function tokenize(contents){
       }
       else if(/[a-zA-Z0-9_]/.test(line[x])){
         let t = x+1;
-        while(/[a-zA-Z0-9_]/.test(line[t])){
+        while(/[a-zA-Z0-9_\.()]/.test(line[t])){
           t++;
         }
         tokens.push(line.substring(x,t));
@@ -75,13 +88,20 @@ function compile_block(tokens,mixins){
       out+=tokens[i].substring(1,tokens[i].length -1);
     }
     else if(token === "{" && tokens[i+1] === "{"){
-      
+      let open = 1;
+      let t = i+2;
+      while(open > 0){
+        if(tokens[t] === "}" && tokens[t+1] === "}") open--;
+        t++;
+      }
+      out+= '"+'+tokens.slice(i+2,t-1).join(" ")+'+"';
+      i = t;
     }
     else if(token === "="){
 
     }
     else{
-      if(tokens.length > i && tokens[i+1] === "{"){
+      if(typeof mixins[token] !== "undefined"){
         let open = 1;
         let t = i+2;
         while(open > 0){
@@ -89,11 +109,11 @@ function compile_block(tokens,mixins){
           else if(tokens[t] === "}") open--;
           t++;
         }
-        out+= builtins[token].before + compile_block(tokens.slice(i+2,t-1)) + builtins[token].after;
+        out+= mixins[token].before + compile_block(tokens.slice(i+2,t-1),mixins) + mixins[token].after;
         i = t - 1;
       }
       else{
-        beforeString+= builtins[token].before + builtins[token].after;
+        out+= mixins[token].before + mixins[token].after;
       }
     }
   }
@@ -101,7 +121,7 @@ function compile_block(tokens,mixins){
 }
 
 function compileFile(contents,callback){
-    let funcstr = 'callback(null,';
+    let funcstr = 'out = ';
     let tokens = tokenize(contents);
     let mixins = builtins();
     let compiled = compile_block(tokens,mixins);
@@ -119,35 +139,61 @@ function compileFile(contents,callback){
         compiled += '"';
       }
     }
-    funcstr+= compiled + ');'
+    funcstr+= compiled + ';callback(null,out);';
     let func = new Function('options','callback',funcstr);
     callback(null,func);
 }
 
-function handleCache(filepath,options,callback){
-  if(viewCache[filepath] == undefined){
-    fs.readFile(filepath,'utf8',(err,contents)=>{
-      if(err){
-          if(options.compileDebug){
-              console.log(err);
+function inheritTree(filepath){
+  return new Promise((res,rej)=>{
+    PRead(filepath).then((contents)=>{
+      contents = contents.trim();
+      if(contents.indexOf("inherits(") === 0){
+        let filename = contents.substring(0,contents.indexOf(")"));
+        filename = filename.substring(filename.indexOf("(")+1,filename.length);
+        let newpath = filepath.replace(/\/[^\/]+$/,"")+filename;
+        contents = contents.substring(contents.indexOf("\n"),contents.length);
+        inheritTree(newpath).then((pcon)=>{
+          let blocks = pcon.match(/block\([^)]+\)/);
+          if(blocks){
+
           }
-          callback(err);
+          let stacks = pcon.match(/stack\([^)]\)/);
+          if(stacks){
+            
+          }
+        });
       }
       else{
-          compileFile(contents,(err,fn)=>{
-            if(err){
-              if(options.compileDebug){
-                console.log(err);
-              }
-              callback(err);
-            }
-            else{
-              viewCache[filepath] = fn;
-              fn(options,callback);
-            }
-          });
+        res(contents);
       }
+    }).catch((err)=>{
+      rej(err);
+    });
   });
+}
+
+function compileFileTree(filepath,callback){
+  let source = "";
+  inheritTree(filepath).then((contents)=>{
+    source = contents;
+  });
+}
+
+function handleCache(filepath,options,callback){
+  if(viewCache[filepath] == undefined){
+    compileFileTree(filepath,(err,fn)=>{
+      if(err){
+        if(options.compileDebug){
+          console.log(err);
+        }
+        callback(err);
+      }
+      else{
+        viewCache[filepath] = fn;
+        fn(options,callback);
+      }
+    });
   }
   else{
     viewCache[filepath](options,callback);
@@ -164,5 +210,6 @@ exports._express = function(filepath,options,callback){
     if(options.compileDebug == undefined && process.env.NODE_ENV === 'production') {
         options.compileDebug = false;
     }
-    handleCache(filepath,options,callback);
+    // handleCache(filepath,options,callback);
+    callback(null,filepath);
 }
